@@ -1,96 +1,248 @@
-import React, { useState } from 'react';
-import { User, UserCheck, Settings, Info, Phone, Menu, X } from 'lucide-react';
+// Updated SideMenuBar Component with proper React Native navigation
+import React from 'react';
+import {
+  View,
+  Text,
+  Modal,
+  TouchableOpacity,
+  ScrollView,
+  StyleSheet,
+  Dimensions,
+} from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
+import {
+  User,
+  UserCheck,
+  Settings,
+  Info,
+  Phone,
+  X,
+} from 'lucide-react-native'; // Important: Use lucide-react-native, not lucide-react
 
-// The usePathname hook is crucial for getting the current route
-// The useNavigation hook helps in programmatic navigation
-
-const SideMenuBar = () => {
-  const router = useRouter();
-  const pathname = usePathname();
-  const [isOpen, setIsOpen] = useState(true);
-
-  const menuItems = [
-    { icon: User, label: 'Profile', id: 'profile', router: '/(patient)/profile' },
-    { icon: UserCheck, label: 'Doctors', id: 'doctors', router: '/(patient)/doctors' },
-    { icon: Settings, label: 'Settings', id: 'settings', router: '/(patient)/settings' },
-    { icon: Info, label: 'About Us', id: 'about', router: '/about' },
-    { icon: Phone, label: 'Emergency Contacts', id: 'emergency', router: '/sos' },
-  ];
+const { width: screenWidth } = Dimensions.get('window');
 
 interface MenuItem {
-    icon: React.ElementType;
-    label: string;
-    id: string;
-    router: string;
+  icon: React.ComponentType<{ color: string; size: number }>;
+  label: string;
+  id: string;
+  route: string; // Changed from 'router' to 'route' for clarity
 }
 
-const handleNavigation = (route: string): void => {
-    router.push(route as any);
-};
+interface SideMenuBarProps {
+  isVisible: boolean;
+  onClose: () => void;
+  activeItem: string;
+  setActiveItem: (item: string) => void;
+}
+
+const SideMenuBar: React.FC<SideMenuBarProps> = ({ 
+  isVisible, 
+  onClose, 
+  activeItem, 
+  setActiveItem 
+}) => {
+  const router = useRouter();
+  const pathname = usePathname();
+
+  // Define menu items with correct route paths for your app structure
+  const menuItems: MenuItem[] = [
+    { 
+      icon: User, 
+      label: 'Profile', 
+      id: 'profile', 
+      route: '/(patient)/profile' 
+    },
+    { 
+      icon: UserCheck, 
+      label: 'Doctors', 
+      id: 'doctors', 
+      route: '/(patient)/doctors' 
+    },
+    { 
+      icon: Settings, 
+      label: 'Settings', 
+      id: 'settings', 
+      route: '/(patient)/settings' 
+    },
+    { 
+      icon: Info, 
+      label: 'About Us', 
+      id: 'about', 
+      route: '/about' 
+    },
+    { 
+      icon: Phone, 
+      label: 'Emergency Contacts', 
+      id: 'emergency', 
+      route: '/sos' 
+    }
+  ];
+
+  const handleNavigation = (item: MenuItem) => {
+    try {
+      // Update active item state
+      setActiveItem(item.id);
+      
+      // Navigate to the route
+      router.push(item.route as any);
+      
+      // Close the sidebar
+      onClose();
+    } catch (error) {
+      console.error(`Navigation error for ${item.label}:`, error);
+      // You might want to show an alert or toast here
+    }
+  };
 
   return (
-    <div className="flex h-screen bg-transparent">
-      {/* Sidebar */}
-      <div
-        className={`${isOpen ? 'w-64' : 'w-16'}
-          bg-gradient-to-b from-[#E6F7FF] to-[#007BFF] 
-          text-[#001F3F] transition-all duration-300 ease-in-out 
-          shadow-xl relative z-50`}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-[#001F3F]/20">
-          {isOpen && <h2 className="text-xl font-bold">JeevanSetu</h2>}
-          <button
-            onClick={() => setIsOpen(!isOpen)}
-            className="p-2 rounded-lg hover:bg-[#001F3F]/10 transition-colors"
-          >
-            {isOpen ? <X size={20} className="text-[#001F3F]" /> : <Menu size={20} className="text-[#001F3F]" />}
-          </button>
-        </div>
+    <Modal
+      visible={isVisible}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalOverlay}>
+        <TouchableOpacity 
+          style={styles.modalBackdrop} 
+          onPress={onClose}
+          activeOpacity={1}
+        />
+        
+        <View style={styles.sidebar}>
+          {/* Header */}
+          <View style={styles.sidebarHeader}>
+            <Text style={styles.sidebarTitle}>JeevanSetu</Text>
+            <TouchableOpacity 
+              onPress={onClose} 
+              style={styles.closeButton}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <X color="#FFFFFF" size={24} />
+            </TouchableOpacity>
+          </View>
 
-        {/* Menu Items */}
-        <nav className="mt-6">
-          <ul className="space-y-2 px-3">
+          {/* Menu Items */}
+          <ScrollView style={styles.sidebarMenu}>
             {menuItems.map((item) => {
-              const isActive = pathname === item.router;
               const IconComponent = item.icon;
+              // Check if current route matches this menu item
+              const isActive = pathname === item.route || activeItem === item.id;
+              
               return (
-                <li key={item.id}>
-                  <button
-                    onClick={() => handleNavigation(item.router)}
-                    className={`
-                      w-full flex items-center px-3 py-3 rounded-lg 
-                      transition-all duration-200
-                      ${isActive
-                        ? 'bg-[#001F3F]/10 text-[#001F3F] font-bold shadow-md'
-                        : 'text-[#001F3F]/80 hover:bg-[#001F3F]/5 hover:text-[#001F3F]'
-                      }
-                    `}
-                    title={!isOpen ? item.label : ''}
-                  >
-                    <IconComponent size={20} className="min-w-[20px]" />
-                    {isOpen && (
-                      <span className="ml-3 text-sm font-medium">
-                        {item.label}
-                      </span>
-                    )}
-                  </button>
-                </li>
+                <TouchableOpacity
+                  key={item.id}
+                  style={[
+                    styles.menuItem,
+                    isActive && styles.menuItemActive
+                  ]}
+                  onPress={() => handleNavigation(item)}
+                  activeOpacity={0.7}
+                >
+                  <IconComponent 
+                    color={isActive ? "#FFFFFF" : "rgba(255, 255, 255, 0.8)"} 
+                    size={20} 
+                  />
+                  <Text style={[
+                    styles.menuItemText,
+                    isActive && styles.menuItemTextActive
+                  ]}>
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
               );
             })}
-          </ul>
-        </nav>
+          </ScrollView>
 
-        {/* Footer */}
-        {isOpen && (
-          <div className="absolute bottom-4 left-4 right-4 text-xs text-[#001F3F]/60 text-center">
-            <p>© 2025 JeevanSetu</p>
-          </div>
-        )}
-      </div>
-    </div>
+          {/* Footer */}
+          <View style={styles.sidebarFooter}>
+            <Text style={styles.footerText}>© 2025 JeevanSetu</Text>
+          </View>
+        </View>
+      </View>
+    </Modal>
   );
 };
+
+const styles = StyleSheet.create({
+  modalOverlay: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  sidebar: {
+    width: screenWidth * 0.75,
+    maxWidth: 280,
+    backgroundColor: 'transparent',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 2, height: 0 },
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+  },
+  sidebarHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+    paddingTop: 50, // Account for status bar
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.2)',
+    // Updated gradient colors to match your design
+    backgroundColor: '#00B3FF',
+  },
+  sidebarTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  closeButton: {
+    padding: 8,
+    borderRadius: 8,
+  },
+  sidebarMenu: {
+    flex: 1,
+    paddingVertical: 20,
+    paddingHorizontal: 15,
+    // Continue gradient background
+    backgroundColor: '#5603BD',
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 15,
+    paddingVertical: 15,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  menuItemActive: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  menuItemText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginLeft: 15,
+  },
+  menuItemTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  sidebarFooter: {
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: '#5603BD',
+  },
+  footerText: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.6)',
+    textAlign: 'center',
+  },
+});
 
 export default SideMenuBar;

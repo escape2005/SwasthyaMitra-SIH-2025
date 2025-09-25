@@ -1,4 +1,4 @@
-import React, { useContext, useState } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,10 +7,11 @@ import {
   TouchableOpacity,
   SafeAreaView,
   Image,
+  ActivityIndicator,
 } from 'react-native';
 import { AuthContext } from '@/contexts/AuthContext';
 import { Calendar, FileText, Clock, ChevronRight, User, ChevronDown, ChevronUp } from 'lucide-react-native';
-
+import { supabase } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
 const router = useRouter();
 const handleCalendarpress = () => {
@@ -38,137 +39,95 @@ interface Patient {
   history: HistoryEntry[];
 }
 
-const mockPatients: Patient[] = [
-  {
-    id: '1',
-    name: 'Arvind Yadav',
-    age: 65,
-    condition: 'Diabetes Type 2',
-    lastVisit: '2025-09-05',
-    nextAppointment: '2025-09-20',
-    avatar: 'https://images.pexels.com/photos/1681010/pexels-photo-1681010.jpeg',
-    history: [
-      {
-        id: 'h1',
-        date: '2025-09-05',
-        type: 'Regular Checkup',
-        description: 'Routine diabetes monitoring',
-        diagnosis: 'Blood sugar levels slightly elevated',
-        prescription: ['Metformin 500mg - 2x daily', 'Glimepiride 2mg - 1x daily'],
-        notes: 'Patient advised to maintain strict diet control'
-      },
-      {
-        id: 'h2',
-        date: '2025-08-22',
-        type: 'Follow-up',
-        description: 'HbA1c test results review',
-        diagnosis: 'Diabetes management improving',
-        prescription: ['Continue current medication', 'Vitamin D supplement'],
-        notes: 'Patient showing good compliance with medication'
-      },
-      {
-        id: 'h3',
-        date: '2025-07-10',
-        type: 'Initial Consultation',
-        description: 'First visit for diabetes management',
-        diagnosis: 'Type 2 Diabetes Mellitus confirmed',
-        prescription: ['Metformin 500mg - 1x daily initially'],
-        notes: 'Patient education provided about diabetes management'
-      }
-    ]
-  },
-  {
-    id: '2',
-    name: 'Suzanne Dantis',
-    age: 58,
-    condition: 'Hypertension',
-    lastVisit: '2025-09-02',
-    nextAppointment: '2025-09-16',
-    avatar: 'https://images.pexels.com/photos/1681010/pexels-photo-1681010.jpeg',
-    history: [
-      {
-        id: 'h4',
-        date: '2025-09-02',
-        type: 'Regular Checkup',
-        description: 'Blood pressure monitoring',
-        diagnosis: 'BP well controlled at 130/85',
-        prescription: ['Amlodipine 5mg - 1x daily', 'Low sodium diet recommended'],
-        notes: 'Patient responding well to current treatment'
-      },
-      {
-        id: 'h5',
-        date: '2025-08-15',
-        type: 'Emergency Visit',
-        description: 'High blood pressure episode',
-        diagnosis: 'Hypertensive crisis - controlled',
-        prescription: ['Increased Amlodipine to 10mg', 'Emergency medication guidance'],
-        notes: 'Patient advised about stress management techniques'
-      }
-    ]
-  },
-  {
-    id: '3',
-    name: 'Yogesh Ghadge',
-    age: 72,
-    condition: 'Arthritis',
-    lastVisit: '2025-08-28',
-    nextAppointment: '2025-09-12',
-    avatar: 'https://images.pexels.com/photos/1681010/pexels-photo-1681010.jpeg',
-    history: [
-      {
-        id: 'h6',
-        date: '2025-08-28',
-        type: 'Regular Checkup',
-        description: 'Joint pain assessment',
-        diagnosis: 'Moderate osteoarthritis in knees',
-        prescription: ['Ibuprofen 400mg - as needed', 'Physical therapy recommended'],
-        notes: 'Patient advised to continue light exercises'
-      },
-      {
-        id: 'h7',
-        date: '2025-07-18',
-        type: 'X-Ray Review',
-        description: 'Joint imaging results',
-        diagnosis: 'Degenerative changes confirmed',
-        prescription: ['Glucosamine supplements', 'Joint support cream'],
-        notes: 'Consider joint replacement consultation if pain worsens'
-      }
-    ]
-  },
-  {
-    id: '4',
-    name: 'Yash Hingu',
-    age: 45,
-    condition: 'Cardiac Care',
-    lastVisit: '2025-09-04',
-    nextAppointment: '2025-09-11',
-    avatar: 'https://images.pexels.com/photos/1681010/pexels-photo-1681010.jpeg',
-    history: [
-      {
-        id: 'h8',
-        date: '2025-09-04',
-        type: 'Cardiology Consultation',
-        description: 'Post-procedure follow-up',
-        diagnosis: 'Recovery progressing well post angioplasty',
-        prescription: ['Aspirin 75mg - 1x daily', 'Atorvastatin 20mg - 1x evening'],
-        notes: 'Patient cleared for light physical activity'
-      },
-      {
-        id: 'h9',
-        date: '2025-08-20',
-        type: 'Procedure',
-        description: 'Coronary angioplasty performed',
-        diagnosis: '90% blockage in LAD - successfully treated',
-        prescription: ['Clopidogrel 75mg - 1x daily for 1 year', 'Beta-blocker added'],
-        notes: 'Procedure successful, patient stable'
-      }
-    ]
-  },
-];
+const mockPatients: Patient[] = [];
 
 export default function PatientsScreen() {
   const { user } = useContext(AuthContext);
+  const [patients, setPatients] = useState<Patient[]>([]);
   const [expandedHistory, setExpandedHistory] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
+
+  const fetchPatientsWithPrescriptions = async (doctorId: string) => {
+    setLoading(true);
+    try {
+      // Fetch patients who have prescriptions from this doctor
+      const { data: prescriptions, error: prescriptionsError } = await supabase
+        .from('prescriptions')
+        .select(`
+          id,
+          patient_id,
+          created_at,
+          medicines,
+          instructions,
+          status,
+          users!patient_id (
+            name,
+            avatar,
+            patients (
+              dob,
+              gender
+            )
+          )
+        `)
+        .eq('doctor_id', doctorId)
+        .order('created_at', { ascending: false });
+
+      if (prescriptionsError) {
+        console.error('Error fetching prescriptions:', prescriptionsError);
+        setLoading(false);
+        return;
+      }
+
+
+
+      // Map patients with their prescriptions grouped
+      const patientMap: { [key: string]: Patient } = {};
+
+      prescriptions.forEach((prescription) => {
+        const patientId = prescription.patient_id;
+        if (!patientMap[patientId]) {
+          const patientData = prescription.users as any;
+          patientMap[patientId] = {
+            id: patientId,
+            name: patientData.name,
+            age: 20,
+            condition: '', // condition is not directly available, can be empty or fetched separately if needed
+            lastVisit: prescription.created_at,
+            avatar: patientData.avatar || 'https://images.pexels.com/photos/1681010/pexels-photo-1681010.jpeg',
+            history: [],
+          };
+        }
+        // Add prescription to patient's history
+        patientMap[patientId].history.push({
+          id: prescription.id,
+          date: prescription.created_at,
+          type: 'Prescription',
+          description: prescription.instructions || '',
+          diagnosis: '',
+          prescription: prescription.medicines || [],
+          notes: '',
+        });
+      });
+
+      // Convert map to array and sort history by date descending
+      const patientsArray = Object.values(patientMap).map((patient) => {
+        patient.history.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        return patient;
+      });
+
+      setPatients(patientsArray);
+    } catch (error) {
+      console.error('Unexpected error fetching patients:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user && user.id) {
+      fetchPatientsWithPrescriptions(user.id);
+    }
+  }, [user]);
 
   const handlePatientPress = (patientId: string) => {
     console.log('Opening patient details for:', patientId);
@@ -181,7 +140,7 @@ export default function PatientsScreen() {
   const renderHistoryEntry = (entry: HistoryEntry) => (
     <View key={entry.id} style={styles.historyEntry}>
       <View style={styles.historyHeader}>
-        <Text style={styles.historyDate}>{new Date(entry.date).toLocaleDateString()}</Text>
+        <Text style={styles.historyDate}>{new Date(entry.date).toLocaleDateString('en-US', {timeZone: 'UTC'})}</Text>
         <Text style={styles.historyType}>{entry.type}</Text>
       </View>
       <Text style={styles.historyDescription}>{entry.description}</Text>
@@ -214,7 +173,7 @@ export default function PatientsScreen() {
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>My Patients</Text>
-          <Text style={styles.headerSubtitle}>{mockPatients.length} active patients</Text>
+          <Text style={styles.headerSubtitle}>{patients.length} active patients</Text>
         </View>
         <TouchableOpacity style={styles.calendarButton} onPress={handleCalendarpress}>
           <Calendar color="#2563EB" size={24} />
@@ -222,75 +181,60 @@ export default function PatientsScreen() {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {mockPatients.map((patient) => (
-          <View key={patient.id} style={styles.patientCard}>
-            <TouchableOpacity onPress={() => handlePatientPress(patient.id)}>
-              <View style={styles.patientHeader}>
-                <View style={[styles.profileAvatar, styles.avatarPlaceholder]}>
-                  <User color="#6B7280" size={20} />
+        {loading ? (
+          <ActivityIndicator size="large" color="#2563EB" />
+        ) : (
+          patients.map((patient) => (
+            <View key={patient.id} style={styles.patientCard}>
+              <TouchableOpacity onPress={() => handlePatientPress(patient.id)}>
+                <View style={styles.patientHeader}>
+                  <View style={[styles.profileAvatar, styles.avatarPlaceholder]}>
+                    <User color="#6B7280" size={20} />
+                  </View>
+
+                  <View style={[styles.patientInfo, styles.patientInfoSpaced]}>
+                    <Text style={styles.patientName}>{patient.name}</Text>
+                    <Text style={styles.patientAge}>Age: {patient.age} years</Text>
+                    <Text style={styles.patientCondition}>{patient.condition}</Text>
+                  </View>
+                  <ChevronRight color="#9CA3AF" size={20} />
                 </View>
 
-                <View style={[styles.patientInfo, styles.patientInfoSpaced]}>
-                  <Text style={styles.patientName}>{patient.name}</Text>
-                  <Text style={styles.patientAge}>Age: {patient.age} years</Text>
-                  <Text style={styles.patientCondition}>{patient.condition}</Text>
-                </View>
-                <ChevronRight color="#9CA3AF" size={20} />
-              </View>
-
-              <View style={styles.patientDetails}>
-                <View style={styles.detailItem}>
-                  <Clock color="#6B7280" size={16} />
-                  <Text style={styles.detailText}>
-                    Last Visit: {new Date(patient.lastVisit).toLocaleDateString()}
-                  </Text>
-                </View>
-
-                {patient.nextAppointment && (
+                <View style={styles.patientDetails}>
                   <View style={styles.detailItem}>
-                    <Calendar color="#10B981" size={16} />
+                    <Clock color="#6B7280" size={16} />
                     <Text style={styles.detailText}>
-                      Next: {new Date(patient.nextAppointment).toLocaleDateString()}
+                      Last Visit: {new Date(patient.lastVisit).toLocaleDateString('en-US', {timeZone: 'UTC'})}
                     </Text>
                   </View>
-                )}
+                </View>
+              </TouchableOpacity>
+
+              <View style={styles.patientActions}>
+                <TouchableOpacity 
+                  style={styles.actionButton}
+                  onPress={() => handleHistoryPress(patient.id)}
+                >
+                  <FileText color="#2563EB" size={18} />
+                  <Text style={styles.actionText}>History</Text>
+                  {expandedHistory === patient.id ? (
+                    <ChevronUp color="#2563EB" size={16} style={styles.chevron} />
+                  ) : (
+                    <ChevronDown color="#2563EB" size={16} style={styles.chevron} />
+                  )}
+                </TouchableOpacity>
               </View>
-            </TouchableOpacity>
 
-            <View style={styles.patientActions}>
-              <TouchableOpacity 
-                style={styles.actionButton}
-                onPress={() => handleHistoryPress(patient.id)}
-              >
-                <FileText color="#2563EB" size={18} />
-                <Text style={styles.actionText}>History</Text>
-                {expandedHistory === patient.id ? (
-                  <ChevronUp color="#2563EB" size={16} style={styles.chevron} />
-                ) : (
-                  <ChevronDown color="#2563EB" size={16} style={styles.chevron} />
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.actionButton}>
-                <FileText color="#059669" size={18} />
-                <Text style={styles.actionText}>Prescriptions</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.actionButton}>
-                <Calendar color="#7C2D12" size={18} />
-                <Text style={styles.actionText}>Schedule</Text>
-              </TouchableOpacity>
+              {/* History Dropdown */}
+              {expandedHistory === patient.id && (
+                <View style={styles.historyDropdown}>
+                  <Text style={styles.historyTitle}>Patient History</Text>
+                  {patient.history.map(renderHistoryEntry)}
+                </View>
+              )}
             </View>
-
-            {/* History Dropdown */}
-            {expandedHistory === patient.id && (
-              <View style={styles.historyDropdown}>
-                <Text style={styles.historyTitle}>Patient History</Text>
-                {patient.history.map(renderHistoryEntry)}
-              </View>
-            )}
-          </View>
-        ))}
+          ))
+        )}
       </ScrollView>
     </SafeAreaView>
   );

@@ -303,7 +303,7 @@ export default function AppointmentsScreen() {
       try {
         // Remove markdown code blocks and backticks if present
         let jsonText = responseText.trim();
-        jsonText = jsonText.replace(/```json\n?|\n?```/g, '').replace(/```\n?|\n?```/g, '').replace(/^[`]+/, '').replace(/[`]+$/, '');
+        jsonText = jsonText.replace(/json\n?|\n?/g, '').replace(/\n?|\n?/g, '').replace(/^[`]+/, '').replace(/[`]+$/, '');
         parsedData = JSON.parse(jsonText);
       } catch (parseError) {
         console.error('Error parsing Gemini response:', parseError);
@@ -363,7 +363,7 @@ If there are instructions, include them in the instructions field.`;
       try {
         // Remove markdown code blocks if present
         let jsonText = decodedText.trim();
-        jsonText = jsonText.replace(/```json\n?|\n?```/g, '');
+        jsonText = jsonText.replace(/json\n?|\n?/g, '');
         parsedData = JSON.parse(jsonText);
       } catch (parseError) {
         console.error('Error parsing Gemini response:', parseError);

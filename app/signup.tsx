@@ -57,12 +57,13 @@ export default function SignupScreen() {
       if (role === 'patient') {
         const onboardingComplete = await checkPatientOnboardingComplete(user.id);
         if (!onboardingComplete) {
-          router.replace('/onboarding');
+          // router.replace('/(patient)/onboarding');
           return;
         }
         router.replace('/login');
       } else if (role === 'doctor') {
-        router.replace('/doctor/verification');
+        // Redirect doctor to verification page
+        // router.replace('/doctor/verification');
       } else {
         router.replace('/login');
       }

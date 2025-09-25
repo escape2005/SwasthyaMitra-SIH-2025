@@ -1,4 +1,5 @@
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useContext, useEffect, useState, useCallback } from 'react'; import { supabase } from '@/lib/supabase'; // Add your supabase client import
+import { useFocusEffect } from '@react-navigation/native'; // For refreshing on screen focus
 import { FileDownloadService } from '@/utils/fileDownload';
 import * as Linking from 'expo-linking';
 import { Asset } from 'expo-asset';
@@ -18,11 +19,11 @@ import {
   Dimensions,
 } from 'react-native';
 import { AuthContext } from '@/contexts/AuthContext';
-import { 
-  Calendar, 
-  FileText, 
-  Download, 
-  Eye, 
+import {
+  Calendar,
+  FileText,
+  Download,
+  Eye,
   User,
   Clock,
   ChevronRight,
@@ -34,61 +35,35 @@ const { width, height } = Dimensions.get('window');
 
 interface Report {
   id: string;
-  patientName: string;
-  reportType: string;
-  uploadDate: string;
+  patient_id: string;
+  doctor_id: string;
+  report_type: string;
+  file_path: string;
+  file_size: string;
+  thumbnail_url?: string;
   status: 'pending' | 'reviewed' | 'urgent';
-  fileSize: string;
-  thumbnail: string;
-  pdfPath: any; // Asset require() returns number or string
+  upload_date: string;
+  reviewed_date?: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+  // Joined patient data
+  patient?: {
+    id: string;
+    name: string;
+  };
 }
 
 // Update mock reports with local PDF paths
-const mockReports: Report[] = [
-  {
-    id: '1',
-    patientName: 'Arvind Yadav',
-    reportType: 'Blood Test Results',
-    uploadDate: '2025-09-07',
-    status: 'pending',
-    fileSize: '2.3 MB',
-    thumbnail: 'https://images.pexels.com/photos/40568/medical-appointment-doctor-healthcare-40568.jpeg',
-    pdfPath: require('../../assets/blood.pdf')
-  },
-  {
-    id: '2',
-    patientName: 'Yogesh Ghadge',
-    reportType: 'Chest X-Ray',
-    uploadDate: '2025-09-04',
-    status: 'urgent',
-    fileSize: '4.1 MB',
-    thumbnail: 'https://images.pexels.com/photos/40568/medical-appointment-doctor-healthcare-40568.jpeg',
-    pdfPath: require('../../assets/chest.pdf')
-  },
-  {
-    id: '3',
-    patientName: 'Suzanne Dantis',
-    reportType: 'ECG Report',
-    uploadDate: '2025-08-05',
-    status: 'reviewed',
-    fileSize: '1.8 MB',
-    thumbnail: 'https://images.pexels.com/photos/40568/medical-appointment-doctor-healthcare-40568.jpeg',
-    pdfPath: require('../../assets/ecg.pdf')
-  },
-  {
-    id: '4',
-    patientName: 'Yash Hingu',
-    reportType: 'MRI Scan',
-    uploadDate: '2025-05-03',
-    status: 'pending',
-    fileSize: '8.7 MB',
-    thumbnail: 'https://images.pexels.com/photos/40568/medical-appointment-doctor-healthcare-40568.jpeg',
-    pdfPath: require('../../assets/mri.pdf')
-  },
-];
+
 
 export default function ReportsScreen() {
   const { user } = useContext(AuthContext);
+  // ADD these new state variables
+  const [reports, setReports] = useState<Report[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [filterStatus, setFilterStatus] = useState<string>('all');
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [viewingReport, setViewingReport] = useState<Report | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -97,9 +72,141 @@ export default function ReportsScreen() {
   const [totalPages, setTotalPages] = useState(0);
   const router = useRouter();
 
+  const fetchReports = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      if (!user?.id) {
+        setError('User not authenticated');
+        return;
+      }
+
+      let query = supabase
+        .from('reports')
+        .select(`
+          id,
+          patient_id,
+          doctor_id,
+          report_type,
+          file_path,
+          file_size,
+          thumbnail_url,
+          status,
+          upload_date,
+          reviewed_date,
+          notes,
+          created_at,
+          updated_at,
+          patient:users!patient_id(
+            id,
+            name
+          )
+        `)
+        .eq('doctor_id', user.id)
+        .order('upload_date', { ascending: false });
+
+      // Apply filter if not 'all'
+      if (filterStatus !== 'all') {
+        query = query.eq('status', filterStatus);
+      }
+
+      const { data, error: fetchError } = await query;
+
+      if (fetchError) {
+        throw fetchError;
+      }
+
+      const transformedData = (data || []).map(report => ({
+        ...report,
+        patient: Array.isArray(report.patient) ? report.patient[0] : report.patient
+      }));
+      setReports(transformedData);
+    } catch (err) {
+      console.error('Error fetching reports:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch reports');
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id, filterStatus]);
+
+  // ADD: Update report status
+  const updateReportStatus = async (reportId: string, newStatus: 'pending' | 'reviewed' | 'urgent') => {
+    try {
+      const { error } = await supabase
+        .from('reports')
+        .update({
+          status: newStatus,
+          reviewed_date: newStatus === 'reviewed' ? new Date().toISOString() : null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', reportId);
+
+      if (error) throw error;
+
+      // Update local state
+      setReports(prevReports =>
+        prevReports.map(report =>
+          report.id === reportId
+            ? { ...report, status: newStatus, reviewed_date: newStatus === 'reviewed' ? new Date().toISOString() : undefined }
+            : report
+        )
+      );
+    } catch (err) {
+      console.error('Error updating report status:', err);
+      Alert.alert('Error', 'Failed to update report status');
+    }
+  };
+
+  // ADD: Get signed URL for file download
+  const getSignedUrl = async (filePath: string): Promise<string> => {
+    try {
+      let actualFilePath = filePath;
+
+      // If the stored path is a full URL, extract the path after medical-reports/
+      if (filePath.startsWith('http')) {
+        const url = new URL(filePath);
+        const pathParts = url.pathname.split('/');
+        const bucketIndex = pathParts.findIndex(part => part === 'medical-reports');
+        if (bucketIndex !== -1 && bucketIndex < pathParts.length - 1) {
+          // Get everything after medical-reports/ (patient-id/filename.pdf)
+          actualFilePath = pathParts.slice(bucketIndex + 1).join('/');
+        }
+      }
+
+      console.log('Original path:', filePath);
+      console.log('Extracted path:', actualFilePath);
+
+      const { data, error } = await supabase.storage
+        .from('medical-reports')
+        .createSignedUrl(actualFilePath, 3600);
+
+      if (error) throw error;
+      return data.signedUrl;
+    } catch (error) {
+      console.error('getSignedUrl error:', error);
+      throw error;
+    }
+  };
+
+  // ADD: Initial load and filter change effects
+  useEffect(() => {
+    fetchReports();
+  }, [fetchReports]);
+
+  // ADD: Refresh when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      fetchReports();
+    }, [fetchReports])
+  );
+
   const handleCalendarpress = () => {
     router.push('/(doctor)/calendar');
   };
+
+  // ADD: Fetch reports from Supabase
+
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -120,9 +227,28 @@ export default function ReportsScreen() {
   };
 
   const handleReportPress = (reportId: string) => {
-    const report = mockReports.find(r => r.id === reportId);
+    const report = reports.find(r => r.id === reportId);
     if (report) {
       handleViewReport(report);
+    }
+  };
+  // Test if we can access the file directly
+  const testFileAccess = async () => {
+    try {
+      // Try to create signed URL for blood.pdf
+      const { data, error } = await supabase.storage
+        .from('medical-reports')
+        .createSignedUrl('blood.pdf', 60);
+
+      if (error) {
+        console.error('Access test failed:', error);
+        Alert.alert('Access Error', `Cannot access file: ${error.message}`);
+      } else {
+        console.log('Access test successful:', data.signedUrl);
+        Alert.alert('Success!', 'File access working correctly');
+      }
+    } catch (error) {
+      console.error('Test error:', error);
     }
   };
 
@@ -130,32 +256,21 @@ export default function ReportsScreen() {
     try {
       setDownloadingId(report.id);
 
-      // Handle asset resolution for require() assets
-      let sourceUri: string;
-      if (typeof report.pdfPath === 'number') {
-        // It's a bundled asset, resolve it
-        const asset = Asset.fromModule(report.pdfPath);
-        await asset.downloadAsync();
-        sourceUri = asset.localUri || asset.uri;
-      } else {
-        // It's already a URI string
-        sourceUri = report.pdfPath;
-      }
+      // Get signed URL from Supabase Storage
+      const signedUrl = await getSignedUrl(report.file_path);
 
       // Create a unique filename
       const timestamp = new Date().getTime();
-      const fileName = `${report.patientName.replace(/\s+/g, '_')}_${report.reportType.replace(/\s+/g, '_')}_${timestamp}.pdf`;
+      const patientName = report.patient?.name || 'Unknown';
+      const fileName = `${patientName.replace(/\s+/g, '_')}_${report.report_type.replace(/\s+/g, '_')}_${timestamp}.pdf`;
       const fileUri = FileSystem.documentDirectory + fileName;
 
-      // Copy the asset to document directory
-      await FileSystem.copyAsync({
-        from: sourceUri,
-        to: fileUri
-      });
-      console.log('File copied from assets to:', fileUri);
+      // Download the file
+      const downloadResult = await FileSystem.downloadAsync(signedUrl, fileUri);
+      console.log('File downloaded to:', downloadResult.uri);
 
-      // Share the file instead of saving to gallery (works better in Expo Go)
-      await shareFile(fileUri, fileName);
+      // Share the file
+      await shareFile(downloadResult.uri, fileName);
 
     } catch (error) {
       console.error('Download error:', error);
@@ -215,17 +330,22 @@ export default function ReportsScreen() {
 
   const handleOpenExternal = async (report: Report) => {
     try {
-      let pdfUri: string;
-      if (typeof report.pdfPath === 'number') {
-        const asset = Asset.fromModule(report.pdfPath);
-        pdfUri = asset.uri;
-      } else {
-        pdfUri = report.pdfPath;
-      }
-      await Linking.openURL(pdfUri);
+      const signedUrl = await getSignedUrl(report.file_path);
+      await Linking.openURL(signedUrl);
     } catch (error) {
+      console.error('Error opening PDF:', error);
       Alert.alert('Error', 'Failed to open PDF in external app.');
     }
+  };
+
+  // ADD: Handle filter selection
+  const handleFilterPress = (status: string) => {
+    setFilterStatus(status);
+  };
+
+  // ADD: Handle review action
+  const handleReviewReport = (reportId: string) => {
+    updateReportStatus(reportId, 'reviewed');
   };
 
   return (
@@ -234,7 +354,7 @@ export default function ReportsScreen() {
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>Patient Reports</Text>
-          <Text style={styles.headerSubtitle}>{mockReports.length} reports to review</Text>
+          <Text style={styles.headerSubtitle}>{reports.length} reports to review</Text>
         </View>
         <TouchableOpacity style={styles.calendarButton} onPress={handleCalendarpress}>
           <Calendar color="#2563EB" size={24} />
@@ -244,42 +364,87 @@ export default function ReportsScreen() {
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Filter Tabs */}
         <View style={styles.filterSection}>
-          <TouchableOpacity style={[styles.filterTab, styles.activeTab]}>
-            <Text style={[styles.filterText, styles.activeFilterText]}>All</Text>
+          <TouchableOpacity
+            style={[styles.filterTab, filterStatus === 'all' && styles.activeTab]}
+            onPress={() => handleFilterPress('all')}>
+            <Text style={[styles.filterText, filterStatus === 'all' && styles.activeFilterText]}>All</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.filterTab}>
-            <Text style={styles.filterText}>Urgent</Text>
+          <TouchableOpacity
+            style={[styles.filterTab, filterStatus === 'urgent' && styles.activeTab]}
+            onPress={() => handleFilterPress('urgent')}>
+            <Text style={[styles.filterText, filterStatus === 'urgent' && styles.activeFilterText]}>Urgent</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.filterTab}>
-            <Text style={styles.filterText}>Pending</Text>
+          <TouchableOpacity
+            style={[styles.filterTab, filterStatus === 'pending' && styles.activeTab]}
+            onPress={() => handleFilterPress('pending')}>
+            <Text style={[styles.filterText, filterStatus === 'pending' && styles.activeFilterText]}>Pending</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.filterTab}>
-            <Text style={styles.filterText}>Reviewed</Text>
+          <TouchableOpacity
+            style={[styles.filterTab, filterStatus === 'reviewed' && styles.activeTab]}
+            onPress={() => handleFilterPress('reviewed')}>
+            <Text style={[styles.filterText, filterStatus === 'reviewed' && styles.activeFilterText]}>Reviewed</Text>
           </TouchableOpacity>
         </View>
 
         {/* Reports List */}
-        {mockReports.map((report) => (
+        {/* Loading State */}
+        {loading && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#2563EB" />
+            <Text style={styles.loadingText}>Loading reports...</Text>
+          </View>
+        )}
+
+        {/* Error State */}
+        {error && (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={fetchReports}>
+              <Text style={styles.retryText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Empty State */}
+        {!loading && !error && reports.length === 0 && (
+          <View style={styles.emptyContainer}>
+            <FileText color="#9CA3AF" size={48} />
+            <Text style={styles.emptyTitle}>No Reports Found</Text>
+            <Text style={styles.emptySubtitle}>
+              {filterStatus === 'all'
+                ? 'No reports have been uploaded yet.'
+                : `No ${filterStatus} reports found.`}
+            </Text>
+          </View>
+        )}
+
+        {/* Reports List */}
+        {reports.map((report) => (
           <TouchableOpacity
             key={report.id}
             style={styles.reportCard}
             onPress={() => handleReportPress(report.id)}>
-            
+
             <View style={styles.reportHeader}>
-              <Image source={{ uri: report.thumbnail }} style={styles.reportThumbnail} />
-              
+              <Image
+                source={{
+                  uri: report.thumbnail_url || 'https://images.pexels.com/photos/40568/medical-appointment-doctor-healthcare-40568.jpeg'
+                }}
+                style={styles.reportThumbnail}
+              />
+
               <View style={styles.reportInfo}>
-                <Text style={styles.patientName}>{report.patientName}</Text>
-                <Text style={styles.reportType}>{report.reportType}</Text>
-                
+                <Text style={styles.patientName}>{report.patient?.name || 'Unknown Patient'}</Text>
+                <Text style={styles.reportType}>{report.report_type}</Text>
+
                 <View style={styles.reportMeta}>
                   <View style={styles.dateContainer}>
                     <Clock color="#6B7280" size={14} />
                     <Text style={styles.uploadDate}>
-                      {new Date(report.uploadDate).toLocaleDateString()}
+                      {new Date(report.upload_date).toLocaleDateString()}
                     </Text>
                   </View>
-                  <Text style={styles.fileSize}>{report.fileSize}</Text>
+                  <Text style={styles.fileSize}>{report.file_size}</Text>
                 </View>
               </View>
 
@@ -300,14 +465,14 @@ export default function ReportsScreen() {
             </View>
 
             <View style={styles.reportActions}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.actionButton}
                 onPress={() => handleOpenExternal(report)}>
                 <Eye color="#2563EB" size={18} />
                 <Text style={styles.actionText}>View</Text>
               </TouchableOpacity>
-              
-              <TouchableOpacity 
+
+              <TouchableOpacity
                 style={[styles.actionButton, downloadingId === report.id && styles.disabledButton]}
                 onPress={() => handleDownload(report)}
                 disabled={downloadingId === report.id}>
@@ -323,11 +488,13 @@ export default function ReportsScreen() {
                   </>
                 )}
               </TouchableOpacity>
-              
+
               {report.status === 'pending' && (
-                <TouchableOpacity style={styles.actionButton}>
+                <TouchableOpacity
+                  style={styles.actionButton}
+                  onPress={() => handleReviewReport(report.id)}>
                   <FileText color="#F59E0B" size={18} />
-                  <Text style={styles.actionText}>Review</Text>
+                  <Text style={styles.actionText}>Mark Reviewed</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -336,7 +503,7 @@ export default function ReportsScreen() {
       </ScrollView>
 
       {/* PDF Viewer Modal */}
-      <Modal
+      {/* <Modal
         visible={false}
         animationType="slide"
         presentationStyle="fullScreen"
@@ -383,7 +550,7 @@ export default function ReportsScreen() {
             )}
           </View>
         </SafeAreaView>
-      </Modal>
+      </Modal> */}
     </SafeAreaView>
   );
 }
@@ -539,7 +706,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#374151',
   },
-  
+
   // Modal Styles
   modalContainer: {
     flex: 1,
@@ -619,5 +786,24 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '500',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 20,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#374151',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
   },
 });

@@ -272,6 +272,7 @@ export default function TodayScreen() {
         `
         )
         .eq('patient_id', user.id)
+        .eq('status', 'pending')
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -526,7 +527,7 @@ export default function TodayScreen() {
       name: medicineForm.name,
       dosage: medicineForm.dosage,
       frequency: medicineForm.frequency,
-      instructions: '', // No instructions for manually added medicine
+      instructions: '',
       disease: medicineForm.disease,
       prescriptionId: '',
       medicineIndex: todaysMedicines.length,

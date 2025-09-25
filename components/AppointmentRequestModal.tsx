@@ -9,15 +9,26 @@ import {
   TextInput,
   Alert,
 } from 'react-native';
-import { Calendar, Clock, Video, Users, X, Check, AlertCircle } from 'lucide-react-native';
-import { AppointmentRequest } from '@/data/appointmentRequests';
+import { Calendar, Clock, Video, Users, X, Check, AlertCircle, FileText, FileX } from 'lucide-react-native';
+
+interface AppointmentRequest {
+  id: string;
+  patient_name: string;
+  patient_phone?: string;
+  appointment_type: 'video' | 'in-person';
+  requested_time: string;
+  consultation_fee: number;
+  priority: 'high' | 'medium' | 'low';
+  symptoms?: string;
+  notes?: string;
+}
 
 interface AppointmentRequestModalProps {
   visible: boolean;
   onClose: () => void;
   request: AppointmentRequest | null;
-  onConfirm: (requestId: string, assignedTime: string) => void;
-  onReject: (requestId: string, reason: string) => void;
+  onConfirm: (requestId: string, assignedTime: string, reportsRequired: boolean) => void;
+  onReject: (requestId: string, reason: string, reportsRequired: boolean) => void;
 }
 
 export default function AppointmentRequestModal({
@@ -30,6 +41,7 @@ export default function AppointmentRequestModal({
   const [assignedTime, setAssignedTime] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
   const [showRejection, setShowRejection] = useState(false);
+  const [reportsRequired, setReportsRequired] = useState(false);
 
   const availableSlots = [
     '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
@@ -38,13 +50,13 @@ export default function AppointmentRequestModal({
 
   const handleConfirm = () => {
     if (!assignedTime || !request) return;
-    onConfirm(request.id, assignedTime);
+    onConfirm(request.id, assignedTime, reportsRequired);
     handleClose();
   };
 
   const handleReject = () => {
     if (!rejectionReason.trim() || !request) return;
-    onReject(request.id, rejectionReason);
+    onReject(request.id, rejectionReason, reportsRequired);
     handleClose();
   };
 
@@ -52,6 +64,7 @@ export default function AppointmentRequestModal({
     setAssignedTime('');
     setRejectionReason('');
     setShowRejection(false);
+    setReportsRequired(false);
     onClose();
   };
 
@@ -141,6 +154,28 @@ export default function AppointmentRequestModal({
                   <Text style={styles.notesText}>{request.notes}</Text>
                 </View>
               )}
+            </View>
+
+            {/* Reports Required Toggle */}
+            <View style={styles.reportsSection}>
+              <View style={styles.reportsToggleContainer}>
+                <TouchableOpacity
+                  style={[styles.toggleButton, reportsRequired && styles.toggleButtonActive]}
+                  onPress={() => setReportsRequired(!reportsRequired)}
+                >
+                  {reportsRequired ? (
+                    <FileText color="#FFFFFF" size={20} />
+                  ) : (
+                    <FileX color="#6B7280" size={20} />
+                  )}
+                </TouchableOpacity>
+                <View style={styles.reportsTextContainer}>
+                  <Text style={styles.reportsTitle}>Reports Required</Text>
+                  <Text style={styles.reportsSubtitle}>
+                    {reportsRequired ? 'Patient will be asked to upload reports' : 'No reports required for this appointment'}
+                  </Text>
+                </View>
+              </View>
             </View>
 
             {!showRejection ? (
@@ -447,5 +482,43 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+
+  // New styles for reports toggle
+  reportsSection: {
+    marginBottom: 20,
+  },
+  reportsToggleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  toggleButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#E5E7EB',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  toggleButtonActive: {
+    backgroundColor: '#2563EB',
+  },
+  reportsTextContainer: {
+    flex: 1,
+  },
+  reportsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  reportsSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
   },
 });

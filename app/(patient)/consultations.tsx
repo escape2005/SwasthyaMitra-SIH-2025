@@ -52,13 +52,43 @@ interface SideMenuBarProps {
 }
 
 const SideMenuBar: React.FC<SideMenuBarProps> = ({ isVisible, onClose, activeItem, setActiveItem }) => {
+  // Import the router at the component level since it's already imported at the top of your file
+  
   const menuItems = [
-    { icon: User, label: 'Profile', id: 'profile' },
-    { icon: UserCheck, label: 'Doctors', id: 'doctors' },
-    { icon: Settings, label: 'Settings', id: 'settings' },
-    { icon: Info, label: 'About Us', id: 'about' },
-    { icon: Phone, label: 'Emergency Contacts', id: 'emergency' }
+    { icon: User, label: 'Profile', id: 'profile', route: '/(patient)/profile' },
+    { icon: UserCheck, label: 'Doctors', id: 'doctors', route: '/(patient)/doctors' },
+    { icon: Settings, label: 'Settings', id: 'settings', route: '/(patient)/settings' },
+    { icon: Info, label: 'About Us', id: 'about', route: '/about' },
+    { icon: Phone, label: 'Emergency Contacts', id: 'emergency', route: '/sos' }
   ];
+
+  // This is the key function that was missing - it actually handles the navigation
+  const handleNavigation = (item: any) => {
+    try {
+      // First, update the active item state to provide immediate visual feedback
+      setActiveItem(item.id);
+      
+      // Then navigate to the new route using the router that's already available in your component
+      router.push(item.route);
+      
+      // Finally, close the sidebar to complete the interaction
+      onClose();
+      
+      // Optional: Log for debugging purposes during development
+      console.log(`Successfully navigated to ${item.label} at route: ${item.route}`);
+      
+    } catch (error) {
+      // Handle navigation errors gracefully
+      console.error(`Navigation failed for ${item.label}:`, error);
+      
+      // You could optionally show an alert to the user here
+      Alert.alert(
+        'Navigation Error', 
+        `Unable to navigate to ${item.label}. Please try again.`,
+        [{ text: 'OK' }]
+      );
+    }
+  };
 
   return (
     <Modal
@@ -71,7 +101,7 @@ const SideMenuBar: React.FC<SideMenuBarProps> = ({ isVisible, onClose, activeIte
         <TouchableOpacity style={styles.modalBackdrop} onPress={onClose} />
         
         <View style={styles.sidebar}>
-          {/* Header */}
+          {/* Header remains the same */}
           <View style={styles.sidebarHeader}>
             <Text style={styles.sidebarTitle}>Medical Portal</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -79,7 +109,7 @@ const SideMenuBar: React.FC<SideMenuBarProps> = ({ isVisible, onClose, activeIte
             </TouchableOpacity>
           </View>
 
-          {/* Menu Items */}
+          {/* Updated Menu Items with proper navigation */}
           <ScrollView style={styles.sidebarMenu}>
             {menuItems.map((item) => {
               const IconComponent = item.icon;
@@ -92,11 +122,10 @@ const SideMenuBar: React.FC<SideMenuBarProps> = ({ isVisible, onClose, activeIte
                     styles.menuItem,
                     isActive && styles.menuItemActive
                   ]}
-                  onPress={() => {
-                    setActiveItem(item.id);
-                    // Handle navigation here
-                    console.log(`Navigate to ${item.label}`);
-                  }}
+                  // This is the crucial change - replace the console.log with actual navigation
+                  onPress={() => handleNavigation(item)}
+                  // Add some visual feedback when the user taps
+                  activeOpacity={0.7}
                 >
                   <IconComponent 
                     color={isActive ? "#FFFFFF" : "#FFFFFF"} 
@@ -114,7 +143,7 @@ const SideMenuBar: React.FC<SideMenuBarProps> = ({ isVisible, onClose, activeIte
             })}
           </ScrollView>
 
-          {/* Footer */}
+          {/* Footer remains the same */}
           <View style={styles.sidebarFooter}>
             <Text style={styles.footerText}>© 2025 Medical Portal</Text>
           </View>
@@ -123,6 +152,7 @@ const SideMenuBar: React.FC<SideMenuBarProps> = ({ isVisible, onClose, activeIte
     </Modal>
   );
 };
+
 
 const router = useRouter();
 const handleSOSPress = () => {
